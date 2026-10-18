@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Maya AI</string>
+    <string name="accessibility_service_description">Enables Maya AI to assist with screen awareness, voice navigation, UI interaction, clicking buttons, and automated device actions under user direction.</string>
+</resources>
