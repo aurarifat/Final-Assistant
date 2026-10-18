@@ -142,6 +142,7 @@ data class UserSettings(
     val favoriteSinger: String = "The Weeknd",
     val omnirouteApiKey: String = "",
     val omnirouteBaseUrl: String = "http://localhost:8080/v1",
+    val omnirouteModel: String = "gpt-4o",
     val assistantName: String = "Maya",
     val persona: PersonaType = PersonaType.MAYA,
     val autoRemember: Boolean = true,

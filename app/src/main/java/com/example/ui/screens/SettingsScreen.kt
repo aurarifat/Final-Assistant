@@ -135,13 +135,42 @@ private fun MainSettingsMenu(viewModel: MayaViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        val isStorageGranted = permissionStatuses["storage_access"] == true
+        val isAssistantGranted = permissionStatuses["default_assistant"] == true
+
         // High-Priority: Permissions & Access Levels
         SettingsMenuItem(
             icon = Icons.Default.Security,
             iconTint = CyberEmerald,
             title = "Permissions & App Access Levels",
-            subtitle = "$grantedCount of 18 Verified • Green Signal status & direct controls",
+            subtitle = "$grantedCount of ${com.example.manager.MayaPermissionManager.ALL_PERMISSIONS.size} Verified • Green Signal status & direct controls",
             onClick = { viewModel.openSettings(SettingsSubPage.PERMISSIONS) }
+        )
+
+        // Default Assistant App (Maya)
+        SettingsMenuItem(
+            icon = Icons.Default.RecordVoiceOver,
+            iconTint = if (isAssistantGranted) CyberEmerald else CyberCyan,
+            title = "Default Assistant App (Maya)",
+            subtitle = if (isAssistantGranted) "Maya active as Android default voice assistant (Green Signal)" else "Tap to choose Maya as your system default assistant & voice app",
+            onClick = {
+                val item = com.example.manager.MayaPermissionManager.ALL_PERMISSIONS.find { it.id == "default_assistant" }
+                if (item != null) viewModel.openPermissionSetting(item)
+                else viewModel.openSettings(SettingsSubPage.PERMISSIONS)
+            }
+        )
+
+        // Device Storage Access
+        SettingsMenuItem(
+            icon = Icons.Default.Folder,
+            iconTint = if (isStorageGranted) CyberEmerald else CyberGold,
+            title = "Device Storage & Files Access",
+            subtitle = if (isStorageGranted) "Storage access granted (Green Signal) • All files & media accessible" else "Storage access not granted • Tap to grant All Files & Media access",
+            onClick = {
+                val item = com.example.manager.MayaPermissionManager.ALL_PERMISSIONS.find { it.id == "storage_access" }
+                if (item != null) viewModel.openPermissionSetting(item)
+                else viewModel.openSettings(SettingsSubPage.PERMISSIONS)
+            }
         )
 
         // High-Priority: Tools & System Hub

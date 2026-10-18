@@ -19,7 +19,7 @@ object OmnirouteClient {
         return url.removeSuffix("/")
     }
 
-    suspend fun testConnection(baseUrl: String, apiKey: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+    suspend fun testConnection(baseUrl: String, apiKey: String, model: String = "gpt-4o"): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         val cleanKey = apiKey.trim()
         if (cleanKey.isEmpty()) {
             return@withContext Pair(false, "Failed to connect: API key is empty.")
@@ -28,6 +28,7 @@ object OmnirouteClient {
         if (cleanBaseUrl.isEmpty()) {
             return@withContext Pair(false, "Failed to connect: Base URL is empty.")
         }
+        val targetModel = model.trim().ifBlank { "gpt-4o" }
 
         try {
             // First attempt: GET {cleanBaseUrl}/models
@@ -47,7 +48,7 @@ object OmnirouteClient {
             }
 
             if (responseCode in 200..299) {
-                return@withContext Pair(true, "Successfully connected to OmniRoute! (Status: $responseCode OK)")
+                return@withContext Pair(true, "Successfully connected to OmniRoute! (Model: $targetModel, Status: $responseCode OK)")
             }
 
             if (responseCode == 401) {
@@ -70,7 +71,7 @@ object OmnirouteClient {
                 chatConn.doOutput = true
 
                 val pingPayload = JSONObject().apply {
-                    put("model", "default")
+                    put("model", targetModel)
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply {
                             put("role", "user")
@@ -121,6 +122,7 @@ object OmnirouteClient {
         baseUrl: String,
         apiKey: String,
         prompt: String,
+        model: String = "gpt-4o",
         systemPrompt: String = "You are Maya, an intelligent AI assistant with deep device automation access on Android. Always answer in English concisely."
     ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         val cleanKey = apiKey.trim()
@@ -131,6 +133,7 @@ object OmnirouteClient {
         if (cleanBaseUrl.isEmpty()) {
             return@withContext Pair(false, "Failed to connect: Base URL is empty.")
         }
+        val targetModel = model.trim().ifBlank { "gpt-4o" }
 
         try {
             val chatUrl = URL("$cleanBaseUrl/chat/completions")
@@ -144,7 +147,7 @@ object OmnirouteClient {
             conn.doOutput = true
 
             val payload = JSONObject().apply {
-                put("model", "default")
+                put("model", targetModel)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")

@@ -263,6 +263,7 @@ class MayaRepository(private val context: Context) {
                 baseUrl = settings.omnirouteBaseUrl,
                 apiKey = settings.omnirouteApiKey,
                 prompt = prompt,
+                model = settings.omnirouteModel,
                 systemPrompt = systemPrompt
             )
             if (success && reply.isNotBlank()) {

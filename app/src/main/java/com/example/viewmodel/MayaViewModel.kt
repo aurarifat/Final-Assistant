@@ -246,11 +246,11 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
         _userSettings.value = transform(_userSettings.value)
     }
 
-    fun testOmnirouteConnection(baseUrl: String, apiKey: String, onResult: (Boolean, String) -> Unit) {
+    fun testOmnirouteConnection(baseUrl: String, apiKey: String, model: String = "gpt-4o", onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             _isTestingOmniroute.value = true
             _omnirouteStatusMessage.value = "Testing OmniRoute connection..."
-            val (success, message) = com.example.network.OmnirouteClient.testConnection(baseUrl, apiKey)
+            val (success, message) = com.example.network.OmnirouteClient.testConnection(baseUrl, apiKey, model)
             _isTestingOmniroute.value = false
             _omnirouteStatusMessage.value = message
             onResult(success, message)

@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.manager.MayaPermissionManager
 import com.example.model.*
 import com.example.ui.theme.*
 import com.example.viewmodel.MayaViewModel
@@ -40,6 +41,7 @@ fun PersonalSettingsPage(viewModel: MayaViewModel) {
     var favSinger by remember { mutableStateOf(settings.favoriteSinger) }
     var omnirouteKey by remember { mutableStateOf(settings.omnirouteApiKey) }
     var baseUrl by remember { mutableStateOf(settings.omnirouteBaseUrl) }
+    var omnirouteModel by remember { mutableStateOf(settings.omnirouteModel) }
 
     Column(
         modifier = Modifier
@@ -158,9 +160,9 @@ fun PersonalSettingsPage(viewModel: MayaViewModel) {
             modifier = Modifier.fillMaxWidth().testTag("omniroute_settings_card")
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("🔑 Omniroute / Gemini API Key", color = CyberGold, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("🔑 Omniroute / Gemini API Key & Custom Model", color = CyberGold, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Text(
-                    "Model ID: auto default. Real network testing verifies API key and endpoint validity.",
+                    "Configure your Base URL, API Key, and Custom Model. Real network testing verifies API key, endpoint reachability, and model parameters.",
                     color = TextMuted,
                     fontSize = 11.sp
                 )
@@ -185,10 +187,51 @@ fun PersonalSettingsPage(viewModel: MayaViewModel) {
                     modifier = Modifier.fillMaxWidth().testTag("omniroute_api_key_input"),
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
                 )
+                OutlinedTextField(
+                    value = omnirouteModel,
+                    onValueChange = {
+                        omnirouteModel = it
+                        viewModel.updateSettings { s -> s.copy(omnirouteModel = it) }
+                    },
+                    label = { Text("Custom Model ID") },
+                    placeholder = { Text("e.g. gpt-4o, gemini-1.5-pro, claude-3-5-sonnet") },
+                    modifier = Modifier.fillMaxWidth().testTag("omniroute_model_input"),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                )
+
+                // Quick preset models
+                Text("Preset Models:", color = TextMuted, fontSize = 11.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val quickModels = listOf("gpt-4o", "gemini-1.5-pro", "gemini-1.5-flash", "claude-3-5-sonnet", "deepseek-chat")
+                    quickModels.forEach { m ->
+                        val isSel = omnirouteModel.trim().equals(m, ignoreCase = true)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSel) CyberCyan else CyberSurfaceVariant,
+                            border = BorderStroke(1.dp, if (isSel) CyberCyan else CyberSurfaceBorder),
+                            modifier = Modifier.clickable {
+                                omnirouteModel = m
+                                viewModel.updateSettings { s -> s.copy(omnirouteModel = m) }
+                            }
+                        ) {
+                            Text(
+                                text = m,
+                                color = if (isSel) Color.Black else TextSecondary,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(
                         onClick = {
-                            viewModel.testOmnirouteConnection(baseUrl, omnirouteKey) { isSuccess, msg ->
+                            viewModel.testOmnirouteConnection(baseUrl, omnirouteKey, omnirouteModel) { isSuccess, msg ->
                                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                             }
                         },
@@ -210,8 +253,14 @@ fun PersonalSettingsPage(viewModel: MayaViewModel) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            viewModel.updateSettings { s -> s.copy(omnirouteApiKey = omnirouteKey, omnirouteBaseUrl = baseUrl) }
-                            Toast.makeText(context, "API configuration saved", Toast.LENGTH_SHORT).show()
+                            viewModel.updateSettings { s ->
+                                s.copy(
+                                    omnirouteApiKey = omnirouteKey,
+                                    omnirouteBaseUrl = baseUrl,
+                                    omnirouteModel = omnirouteModel
+                                )
+                            }
+                            Toast.makeText(context, "OmniRoute configuration saved ($omnirouteModel)", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
                         modifier = Modifier.testTag("save_omniroute_button")
@@ -936,6 +985,79 @@ fun BackupSettingsPage(viewModel: MayaViewModel) {
                     colors = ButtonDefaults.buttonColors(containerColor = CyberCyan)
                 ) {
                     Text("Export All Data", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Dedicated Storage Access Control Card
+        val permissionStatuses by viewModel.permissionStatuses.collectAsState()
+        val isStorageGranted = permissionStatuses["storage_access"] == true
+
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = CyberSurface,
+            border = BorderStroke(1.dp, if (isStorageGranted) CyberEmerald else CyberSurfaceBorder),
+            modifier = Modifier.fillMaxWidth().testTag("backup_storage_permission_card")
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = if (isStorageGranted) CyberEmerald else CyberGold,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Device Storage Access", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isStorageGranted) CyberEmerald.copy(alpha = 0.2f) else CyberGold.copy(alpha = 0.2f),
+                        border = BorderStroke(1.dp, if (isStorageGranted) CyberEmerald else CyberGold)
+                    ) {
+                        Text(
+                            text = if (isStorageGranted) "GRANTED (GREEN SIGNAL)" else "NOT GRANTED",
+                            color = if (isStorageGranted) CyberEmerald else CyberGold,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    "Enables Maya to read and write to device storage, photos, downloads, documents, and archive backups without restriction.",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
+
+                Button(
+                    onClick = {
+                        val item = MayaPermissionManager.ALL_PERMISSIONS.find { it.id == "storage_access" }
+                        if (item != null) {
+                            viewModel.openPermissionSetting(item)
+                        } else {
+                            viewModel.openSettings(com.example.viewmodel.SettingsSubPage.PERMISSIONS)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isStorageGranted) CyberEmerald.copy(alpha = 0.25f) else CyberCyan
+                    ),
+                    modifier = Modifier.testTag("backup_grant_storage_button")
+                ) {
+                    Text(
+                        text = if (isStorageGranted) "Manage Storage Permission" else "Grant Storage Access Now",
+                        color = if (isStorageGranted) CyberEmerald else Color.Black,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
                 }
             }
         }

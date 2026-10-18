@@ -2,11 +2,13 @@ package com.example.manager
 
 import android.Manifest
 import android.app.NotificationManager
+import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
@@ -156,6 +158,36 @@ object MayaPermissionManager {
             } else {
                 listOf(Manifest.permission.BLUETOOTH)
             }
+        ),
+        PermissionItem(
+            id = "default_assistant",
+            name = "Default Assistant App (Maya)",
+            description = "Set Maya as the Android default digital voice assistant and assist interaction app.",
+            isSpecial = true,
+            intentAction = Settings.ACTION_VOICE_INPUT_SETTINGS
+        ),
+        PermissionItem(
+            id = "storage_access",
+            name = "Device Storage & All Files Access",
+            description = "Manage and read device files, documents, photos, media archives, and storage backups.",
+            isSpecial = true,
+            intentAction = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
+            } else {
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+            },
+            runtimePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                listOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VIDEO,
+                    Manifest.permission.READ_MEDIA_AUDIO
+                )
+            } else {
+                listOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+            }
         )
     )
 
@@ -180,6 +212,31 @@ object MayaPermissionManager {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 nm?.isNotificationPolicyAccessGranted ?: false
             }
+            "default_assistant" -> {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val rm = context.getSystemService(RoleManager::class.java)
+                        if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
+                            if (rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)) return true
+                        }
+                    }
+                    val currentAssist = Settings.Secure.getString(context.contentResolver, "assistant")
+                    val currentVoice = Settings.Secure.getString(context.contentResolver, "voice_interaction_service")
+                    (currentAssist != null && currentAssist.contains(context.packageName)) ||
+                    (currentVoice != null && currentVoice.contains(context.packageName))
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            "storage_access" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Environment.isExternalStorageManager() ||
+                    (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED)
+                } else {
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                }
+            }
             else -> {
                 if (item.runtimePermissions.isEmpty()) true
                 else {
@@ -203,6 +260,63 @@ object MayaPermissionManager {
     }
 
     fun openSpecialPermissionSetting(context: Context, item: PermissionItem) {
+        if (item.id == "default_assistant") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    val rm = context.getSystemService(RoleManager::class.java)
+                    if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT) && !rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
+                        val roleIntent = rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(roleIntent)
+                        return
+                    }
+                } catch (e: Exception) {
+                    // Fallback to voice input settings
+                }
+            }
+            try {
+                val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+                return
+            } catch (e: Exception) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                    return
+                } catch (e2: Exception) {
+                    // fallback below
+                }
+            }
+        }
+
+        if (item.id == "storage_access") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                    return
+                } catch (e: Exception) {
+                    try {
+                        val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(intent)
+                        return
+                    } catch (e2: Exception) {
+                        // fallback below
+                    }
+                }
+            }
+        }
+
         val action = item.intentAction ?: Settings.ACTION_APPLICATION_DETAILS_SETTINGS
         try {
             val intent = Intent(action).apply {
