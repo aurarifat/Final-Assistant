@@ -108,6 +108,13 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastToolExecution = MutableStateFlow<ToolResult?>(null)
     val lastToolExecution: StateFlow<ToolResult?> = _lastToolExecution.asStateFlow()
 
+    // OmniRoute API connection state
+    private val _isTestingOmniroute = MutableStateFlow(false)
+    val isTestingOmniroute: StateFlow<Boolean> = _isTestingOmniroute.asStateFlow()
+
+    private val _omnirouteStatusMessage = MutableStateFlow<String?>(null)
+    val omnirouteStatusMessage: StateFlow<String?> = _omnirouteStatusMessage.asStateFlow()
+
     // 4-Side Glow Live Voice Assistant (Always-On)
     private val _isLiveVoiceActive = MutableStateFlow(false)
     val isLiveVoiceActive: StateFlow<Boolean> = _isLiveVoiceActive.asStateFlow()
@@ -150,7 +157,7 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
             delay(500)
             if (memories.value.isEmpty()) {
                 repository.addMemory("Music Taste", "Prefers The Weeknd, EDM and acoustic chill songs", "Preference")
-                repository.addMemory("Language Setting", "Banglish preferred for daily conversation", "Personal", isPinned = true)
+                repository.addMemory("Language Setting", "English preferred for daily conversation", "Personal", isPinned = true)
                 repository.addMemory("Study Focus", "Preparing for Android & AI systems design", "Work")
             }
             if (chatMessages.value.isEmpty()) {
@@ -237,6 +244,17 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateSettings(transform: (UserSettings) -> UserSettings) {
         _userSettings.value = transform(_userSettings.value)
+    }
+
+    fun testOmnirouteConnection(baseUrl: String, apiKey: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isTestingOmniroute.value = true
+            _omnirouteStatusMessage.value = "Testing OmniRoute connection..."
+            val (success, message) = com.example.network.OmnirouteClient.testConnection(baseUrl, apiKey)
+            _isTestingOmniroute.value = false
+            _omnirouteStatusMessage.value = message
+            onResult(success, message)
+        }
     }
 
     fun previewVoice(voice: VoiceStyle) {

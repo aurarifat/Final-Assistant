@@ -256,7 +256,23 @@ class MayaRepository(private val context: Context) {
             return@withContext Pair(reply, "Device Control")
         }
 
-        // 5. Contextual persona response
+        // 5. Real OmniRoute API completion (if API key is provided)
+        if (settings.omnirouteApiKey.isNotBlank()) {
+            val systemPrompt = "You are Maya, an intelligent AI personal assistant on Android with whole access to device automation and tools. Always answer in English concisely."
+            val (success, reply) = com.example.network.OmnirouteClient.sendChatCompletion(
+                baseUrl = settings.omnirouteBaseUrl,
+                apiKey = settings.omnirouteApiKey,
+                prompt = prompt,
+                systemPrompt = systemPrompt
+            )
+            if (success && reply.isNotBlank()) {
+                return@withContext Pair(reply, "OmniRoute AI")
+            } else {
+                return@withContext Pair("Failed to connect to OmniRoute: $reply", "OmniRoute Error")
+            }
+        }
+
+        // 6. Contextual persona response (Default English)
         val memoryContext = if (recentMemories.isNotEmpty()) {
             " (Context: user preference \"${recentMemories.first().content.take(40)}\")"
         } else ""
@@ -277,8 +293,8 @@ class MayaRepository(private val context: Context) {
             PersonaType.MAYA -> {
                 when (settings.language) {
                     com.example.model.LanguageChoice.BANGLA -> "হ্যাঁ ${settings.userName}! আমি প্রস্তুত। $prompt নিয়ে আমি কাজ করছি। সব টুল গ্রিন সিগনালে সক্রিয় আছে।"
-                    com.example.model.LanguageChoice.BANGLISH -> "Hey ${settings.userName}! Ami shob bujhte perechi. \"$prompt\" shomporke shob context check korlam$memoryContext. Ready!"
-                    else -> "Hi ${settings.userName}! Maya here. I've processed \"$prompt\" and everything is tuned to your workflow$memoryContext."
+                    com.example.model.LanguageChoice.BANGLISH -> "Hey ${settings.userName}! All clear. I've processed \"$prompt\"$memoryContext. Ready!"
+                    else -> "Hi ${settings.userName}! Maya here. I have processed \"$prompt\" and all device services are standing by with green signals$memoryContext."
                 }
             }
         }

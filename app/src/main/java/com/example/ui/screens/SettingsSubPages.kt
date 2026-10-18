@@ -148,16 +148,19 @@ fun PersonalSettingsPage(viewModel: MayaViewModel) {
         }
 
         // Omniroute / Gemini API Key
+        val isTestingOmniroute by viewModel.isTestingOmniroute.collectAsState()
+        val omnirouteStatusMsg by viewModel.omnirouteStatusMessage.collectAsState()
+
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = CyberSurface,
             border = BorderStroke(1.dp, CyberSurfaceBorder),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().testTag("omniroute_settings_card")
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("🔑 Omniroute / Gemini API Key", color = CyberGold, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Text(
-                    "Model ID: auto default. Base URL won't be blocked on localhost due to security policy.",
+                    "Model ID: auto default. Real network testing verifies API key and endpoint validity.",
                     color = TextMuted,
                     fontSize = 11.sp
                 )
@@ -168,7 +171,7 @@ fun PersonalSettingsPage(viewModel: MayaViewModel) {
                         viewModel.updateSettings { s -> s.copy(omnirouteBaseUrl = it) }
                     },
                     label = { Text("Base URL") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("omniroute_base_url_input"),
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
                 )
                 OutlinedTextField(
@@ -179,14 +182,30 @@ fun PersonalSettingsPage(viewModel: MayaViewModel) {
                     },
                     label = { Text("API Key") },
                     placeholder = { Text("Enter Omniroute / Gemini API Key") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("omniroute_api_key_input"),
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
                 )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = {
-                        Toast.makeText(context, "API Key tested successfully! Connection online.", Toast.LENGTH_SHORT).show()
-                    }) {
-                        Text("Test Key", color = CyberCyan)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.testOmnirouteConnection(baseUrl, omnirouteKey) { isSuccess, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        enabled = !isTestingOmniroute,
+                        modifier = Modifier.testTag("test_omniroute_button")
+                    ) {
+                        if (isTestingOmniroute) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = CyberCyan,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Testing...", color = CyberCyan, fontSize = 12.sp)
+                        } else {
+                            Text("Test Key", color = CyberCyan)
+                        }
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -194,9 +213,45 @@ fun PersonalSettingsPage(viewModel: MayaViewModel) {
                             viewModel.updateSettings { s -> s.copy(omnirouteApiKey = omnirouteKey, omnirouteBaseUrl = baseUrl) }
                             Toast.makeText(context, "API configuration saved", Toast.LENGTH_SHORT).show()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan)
+                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
+                        modifier = Modifier.testTag("save_omniroute_button")
                     ) {
                         Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Visual Status Feedback
+                if (omnirouteStatusMsg != null) {
+                    val isSuccess = omnirouteStatusMsg?.contains("Successfully", ignoreCase = true) == true ||
+                                    omnirouteStatusMsg?.contains("Status: 200", ignoreCase = true) == true
+                    val bgColor = if (isSuccess) Color(0xFF064E3B) else Color(0xFF450A0A)
+                    val borderColor = if (isSuccess) Color(0xFF10B981) else Color(0xFFEF4444)
+                    val textColor = if (isSuccess) Color(0xFF6EE7B7) else Color(0xFFFCA5A5)
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = bgColor,
+                        border = BorderStroke(1.dp, borderColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                contentDescription = if (isSuccess) "Connection Success" else "Connection Failed",
+                                tint = textColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = omnirouteStatusMsg ?: "",
+                                color = textColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
             }

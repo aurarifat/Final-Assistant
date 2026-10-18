@@ -152,7 +152,7 @@ data class UserSettings(
     val elevenLabsApiKey: String = "",
     val cloudTtsApiKey: String = "",
     val autoScrollReels: Boolean = false,
-    val language: LanguageChoice = LanguageChoice.BANGLISH,
+    val language: LanguageChoice = LanguageChoice.ENGLISH,
     val wakeWordAutoStart: Boolean = true,
     val proactiveMaya: Boolean = true,
     val sleepTimer: SleepTimerChoice = SleepTimerChoice.MIN_10,
