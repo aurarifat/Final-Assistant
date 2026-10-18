@@ -533,7 +533,14 @@ fun VoiceEngineSettingsPage(viewModel: MayaViewModel) {
     val settings by viewModel.userSettings.collectAsState()
     val context = LocalContext.current
     var elevenKey by remember { mutableStateOf(settings.elevenLabsApiKey) }
+    var elevenVoiceId by remember { mutableStateOf(settings.elevenLabsVoiceId) }
+    var elevenModelId by remember { mutableStateOf(settings.elevenLabsModelId) }
     var cloudTtsKey by remember { mutableStateOf(settings.cloudTtsApiKey) }
+    var singleWordMode by remember { mutableStateOf(settings.singleWordDetectionMode) }
+
+    val isTestingElevenLabs by viewModel.isTestingElevenLabs.collectAsState()
+    val elevenLabsStatusMsg by viewModel.elevenLabsStatusMessage.collectAsState()
+    val speechDetectedWord by viewModel.speechDetectedWord.collectAsState()
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -573,17 +580,207 @@ fun VoiceEngineSettingsPage(viewModel: MayaViewModel) {
             }
         }
 
-        Text("ElevenLabs API Key for Voice Reply", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        OutlinedTextField(
-            value = elevenKey,
-            onValueChange = {
-                elevenKey = it
-                viewModel.updateSettings { s -> s.copy(elevenLabsApiKey = it) }
-            },
-            placeholder = { Text("Optional ElevenLabs Key for ultra-realistic voice") },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
-        )
+        // Speech Recognition: Single Word Voice Detection
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = CyberSurface,
+            border = BorderStroke(1.dp, if (singleWordMode) CyberEmerald.copy(alpha = 0.6f) else CyberSurfaceBorder),
+            modifier = Modifier.fillMaxWidth().testTag("single_word_voice_card")
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.RecordVoiceOver,
+                            contentDescription = null,
+                            tint = if (singleWordMode) CyberEmerald else CyberCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Speech Recognition: Single Word Detection", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    Switch(
+                        checked = singleWordMode,
+                        onCheckedChange = {
+                            singleWordMode = it
+                            viewModel.updateSettings { s -> s.copy(singleWordDetectionMode = it) }
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = CyberEmerald)
+                    )
+                }
+                Text(
+                    "Detects single-word utterances from your voice (e.g. \"Flashlight\", \"Battery\", \"Music\", \"Stop\", \"YouTube\", \"Scroll\") and executes commands or replies immediately without waiting for complete sentences.",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
+                if (speechDetectedWord != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = CyberEmerald.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, CyberEmerald)
+                    ) {
+                        Text(
+                            text = "Last Detected Word: \"$speechDetectedWord\"",
+                            color = CyberEmerald,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ElevenLabs API & Retrofit Streaming Configuration
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = CyberSurface,
+            border = BorderStroke(1.dp, if (elevenKey.isNotBlank()) CyberViolet.copy(alpha = 0.7f) else CyberSurfaceBorder),
+            modifier = Modifier.fillMaxWidth().testTag("elevenlabs_settings_card")
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.GraphicEq, contentDescription = null, tint = CyberViolet, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("ElevenLabs Retrofit TTS & Stream Player", color = CyberViolet, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+
+                Text(
+                    "Configures the Retrofit service to communicate directly with api.elevenlabs.io for studio-grade text-to-speech audio streaming with managed MediaPlayer playback. Falls back to on-device TTS automatically if key is absent or network fails.",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
+
+                OutlinedTextField(
+                    value = elevenKey,
+                    onValueChange = {
+                        elevenKey = it
+                        viewModel.updateSettings { s -> s.copy(elevenLabsApiKey = it) }
+                    },
+                    label = { Text("ElevenLabs API Key") },
+                    placeholder = { Text("Enter xi-api-key") },
+                    modifier = Modifier.fillMaxWidth().testTag("elevenlabs_api_key_input"),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                )
+
+                OutlinedTextField(
+                    value = elevenVoiceId,
+                    onValueChange = {
+                        elevenVoiceId = it
+                        viewModel.updateSettings { s -> s.copy(elevenLabsVoiceId = it) }
+                    },
+                    label = { Text("Voice ID") },
+                    placeholder = { Text("e.g. 21m00Tcm4TlvDq8ikWAM (Rachel)") },
+                    modifier = Modifier.fillMaxWidth().testTag("elevenlabs_voice_id_input"),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                )
+
+                Text("Preset Voices:", color = TextMuted, fontSize = 11.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val voices = listOf(
+                        "Rachel" to "21m00Tcm4TlvDq8ikWAM",
+                        "Adam" to "pNInz6obpgDQGcFmaJgB",
+                        "Bella" to "EXAVITQu4vr4xnSDxMaL",
+                        "Antoni" to "ErXwobaYiN019PkySvjV",
+                        "Domi" to "AZnzlk1XvdvUeBnXmlld"
+                    )
+                    voices.forEach { (name, id) ->
+                        val isSel = elevenVoiceId.trim() == id
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSel) CyberViolet else CyberSurfaceVariant,
+                            border = BorderStroke(1.dp, if (isSel) CyberViolet else CyberSurfaceBorder),
+                            modifier = Modifier.clickable {
+                                elevenVoiceId = id
+                                viewModel.updateSettings { s -> s.copy(elevenLabsVoiceId = id) }
+                            }
+                        ) {
+                            Text(
+                                text = name,
+                                color = if (isSel) Color.White else TextSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = elevenModelId,
+                    onValueChange = {
+                        elevenModelId = it
+                        viewModel.updateSettings { s -> s.copy(elevenLabsModelId = it) }
+                    },
+                    label = { Text("Model ID") },
+                    placeholder = { Text("eleven_monolingual_v1 or eleven_multilingual_v2") },
+                    modifier = Modifier.fillMaxWidth().testTag("elevenlabs_model_id_input"),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                )
+
+                if (elevenLabsStatusMsg != null) {
+                    Text(
+                        text = elevenLabsStatusMsg!!,
+                        color = if (elevenLabsStatusMsg!!.contains("verified", ignoreCase = true) || elevenLabsStatusMsg!!.contains("Connected", ignoreCase = true)) CyberEmerald else CyberGold,
+                        fontSize = 11.sp
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.testElevenLabsVoice(elevenKey, elevenVoiceId) { success, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        enabled = !isTestingElevenLabs,
+                        modifier = Modifier.testTag("test_elevenlabs_stream_button")
+                    ) {
+                        if (isTestingElevenLabs) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = CyberViolet,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Streaming...", color = CyberViolet, fontSize = 12.sp)
+                        } else {
+                            Text("Test Voice Stream", color = CyberViolet)
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            viewModel.updateSettings { s ->
+                                s.copy(
+                                    elevenLabsApiKey = elevenKey,
+                                    elevenLabsVoiceId = elevenVoiceId,
+                                    elevenLabsModelId = elevenModelId,
+                                    singleWordDetectionMode = singleWordMode
+                                )
+                            }
+                            Toast.makeText(context, "ElevenLabs configuration saved!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CyberCyan)
+                    ) {
+                        Text("Save Settings", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
 
         Text("Cloud Text-to-Speech API Key", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         OutlinedTextField(
@@ -596,16 +793,6 @@ fun VoiceEngineSettingsPage(viewModel: MayaViewModel) {
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
         )
-
-        Button(
-            onClick = {
-                Toast.makeText(context, "Voice engine configuration updated", Toast.LENGTH_SHORT).show()
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Save Voice Engine Settings", color = Color.Black, fontWeight = FontWeight.Bold)
-        }
     }
 }
 

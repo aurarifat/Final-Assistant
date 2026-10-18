@@ -11,6 +11,7 @@ import com.example.data.database.MemoryEntity
 import com.example.data.repository.MayaRepository
 import com.example.engine.ToolResult
 import com.example.manager.MayaPermissionManager
+import com.example.manager.MayaSpeechRecognitionManager
 import com.example.manager.PermissionItem
 import com.example.model.*
 import com.example.service.MayaAccessibilityService
@@ -119,6 +120,25 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLiveVoiceActive = MutableStateFlow(false)
     val isLiveVoiceActive: StateFlow<Boolean> = _isLiveVoiceActive.asStateFlow()
 
+    // ElevenLabs state
+    private val _isTestingElevenLabs = MutableStateFlow(false)
+    val isTestingElevenLabs: StateFlow<Boolean> = _isTestingElevenLabs.asStateFlow()
+
+    private val _elevenLabsStatusMessage = MutableStateFlow<String?>(null)
+    val elevenLabsStatusMessage: StateFlow<String?> = _elevenLabsStatusMessage.asStateFlow()
+
+    // Speech Recognition Manager (Voice Input & Single Word Detection)
+    private val speechManager = MayaSpeechRecognitionManager(
+        context = getApplication<Application>()
+    ) { text, isSingleWord ->
+        handleSpeechRecognized(text, isSingleWord)
+    }
+
+    val speechDetectedWord: StateFlow<String?> = speechManager.detectedWord
+    val speechRmsDb: StateFlow<Float> = speechManager.rmsDb
+    val isSpeechListening: StateFlow<Boolean> = speechManager.isListening
+    val speechRecognizedPhrase: StateFlow<String?> = speechManager.recognizedPhrase
+
     // System Settings Control Toggles
     private val _autoRotate = MutableStateFlow(true)
     val autoRotate: StateFlow<Boolean> = _autoRotate.asStateFlow()
@@ -223,12 +243,20 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
         _showStartupPermissionModal.value = show
     }
 
+    private fun handleSpeechRecognized(text: String, isSingleWord: Boolean) {
+        val wordMsg = if (isSingleWord) "Single word detected: \"$text\"" else "Voice command: \"$text\""
+        _systemStatusMessage.value = wordMsg
+        sendPrompt(text)
+    }
+
     fun wakeUpMaya() {
         _orbState.value = MayaOrbState.LISTENING
-        _systemStatusMessage.value = "Maya is listening... Speak now"
+        _systemStatusMessage.value = "Maya is listening... Speak a single word or command"
+        speechManager.startListening(keepListening = _isLiveVoiceActive.value)
     }
 
     fun sleepMaya() {
+        speechManager.stopListening()
         repository.stopSpeaking()
         _orbState.value = MayaOrbState.ASLEEP
         _systemStatusMessage.value = "Maya is asleep — say \"Hey Maya\" or tap to wake"
@@ -257,9 +285,25 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun testElevenLabsVoice(apiKey: String, voiceId: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isTestingElevenLabs.value = true
+            _elevenLabsStatusMessage.value = "Testing ElevenLabs stream connection..."
+            repository.testElevenLabsConnection(
+                apiKey = apiKey,
+                voiceId = voiceId,
+                sampleText = "Hello! I am Maya, your voice assistant powered by ElevenLabs high-fidelity text-to-speech."
+            ) { success, msg ->
+                _isTestingElevenLabs.value = false
+                _elevenLabsStatusMessage.value = msg
+                onResult(success, msg)
+            }
+        }
+    }
+
     fun previewVoice(voice: VoiceStyle) {
         _activeVoicePlaying.value = voice.code
-        repository.speakText(voice.sampleText, voice) {
+        repository.speakText(voice.sampleText, voice, _userSettings.value) {
             _activeVoicePlaying.value = null
         }
     }
@@ -296,7 +340,9 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
         if (newState) {
             _orbState.value = MayaOrbState.LISTENING
             _systemStatusMessage.value = "Live Voice Assistant Active • 4-Side Edge Glow ON"
+            speechManager.startListening(keepListening = true)
         } else {
+            speechManager.stopListening()
             repository.stopSpeaking()
             _orbState.value = MayaOrbState.ASLEEP
             _systemStatusMessage.value = "Live voice assistant turned off"
@@ -360,11 +406,12 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
         val userText = prompt.trim()
 
         viewModelScope.launch {
+            speechManager.stopListening()
             repository.addChatMessage(userText, isUser = true, attachmentUri = attachmentUri)
             _orbState.value = MayaOrbState.THINKING
             _systemStatusMessage.value = "Thinking..."
 
-            delay(500)
+            delay(350)
 
             val (reply, actionTaken) = repository.generateAssistantReply(
                 userText,
@@ -379,21 +426,12 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
             val voice = AVAILABLE_VOICES.find { it.code == _userSettings.value.selectedVoiceCode }
                 ?: AVAILABLE_VOICES.first()
 
-            repository.speakText(reply, voice) {
+            repository.speakText(reply, voice, _userSettings.value) {
                 // If live voice assistant is on, ALWAYS stay on and return to LISTENING!
                 if (_isLiveVoiceActive.value) {
                     _orbState.value = MayaOrbState.LISTENING
-                    _systemStatusMessage.value = "Maya listening... Speak prompt"
-                } else {
-                    _orbState.value = MayaOrbState.READY
-                }
-            }
-
-            delay(2800)
-            if (_orbState.value == MayaOrbState.SPEAKING) {
-                if (_isLiveVoiceActive.value) {
-                    _orbState.value = MayaOrbState.LISTENING
-                    _systemStatusMessage.value = "Maya listening... Speak prompt"
+                    _systemStatusMessage.value = "Maya listening... Speak single word or command"
+                    speechManager.startListening(keepListening = true)
                 } else {
                     _orbState.value = MayaOrbState.READY
                 }
@@ -632,5 +670,11 @@ class MayaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.addMemory(title, content, category)
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        speechManager.destroy()
+        repository.stopSpeaking()
     }
 }

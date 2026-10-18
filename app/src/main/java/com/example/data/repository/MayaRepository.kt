@@ -20,6 +20,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 import java.util.UUID
+import com.example.audio.MayaAudioManager
+import com.example.network.ElevenLabsClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import android.speech.tts.UtteranceProgressListener
 
 class MayaRepository(private val context: Context) {
 
@@ -28,6 +34,8 @@ class MayaRepository(private val context: Context) {
     private val chatDao = db.chatDao()
 
     val toolEngine = MayaToolEngine(context)
+    val audioManager = MayaAudioManager(context.applicationContext)
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
@@ -131,18 +139,96 @@ class MayaRepository(private val context: Context) {
         }
     }
 
-    fun speakText(text: String, voice: VoiceStyle, onDone: (() -> Unit)? = null) {
+    fun speakText(
+        text: String,
+        voice: VoiceStyle,
+        settings: UserSettings? = null,
+        onDone: (() -> Unit)? = null
+    ) {
+        val elevenKey = settings?.elevenLabsApiKey?.trim().orEmpty()
+        if (elevenKey.isNotEmpty()) {
+            repoScope.launch {
+                try {
+                    val voiceId = settings?.elevenLabsVoiceId ?: "21m00Tcm4TlvDq8ikWAM"
+                    val modelId = settings?.elevenLabsModelId ?: "eleven_monolingual_v1"
+                    val response = ElevenLabsClient.streamTextToSpeech(
+                        apiKey = elevenKey,
+                        voiceId = voiceId,
+                        text = text,
+                        modelId = modelId
+                    )
+                    if (response.isSuccessful && response.body() != null) {
+                        val played = audioManager.playAudioStream(response.body()!!, onDone)
+                        if (played) return@launch
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("MayaRepository", "ElevenLabs stream playback failed, falling back to local TTS", e)
+                }
+                fallbackLocalTts(text, voice, onDone)
+            }
+        } else {
+            fallbackLocalTts(text, voice, onDone)
+        }
+    }
+
+    private fun fallbackLocalTts(text: String, voice: VoiceStyle, onDone: (() -> Unit)? = null) {
         if (!isTtsReady || tts == null) {
             onDone?.invoke()
             return
         }
+        val utteranceId = UUID.randomUUID().toString()
+        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(id: String?) {}
+            override fun onDone(id: String?) {
+                if (id == utteranceId) onDone?.invoke()
+            }
+            override fun onError(id: String?) {
+                if (id == utteranceId) onDone?.invoke()
+            }
+        })
         tts?.setPitch(voice.pitch)
         tts?.setSpeechRate(voice.speed)
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
     fun stopSpeaking() {
+        audioManager.stop()
         tts?.stop()
+    }
+
+    suspend fun testElevenLabsConnection(
+        apiKey: String,
+        voiceId: String,
+        sampleText: String = "Hello! I am Maya, your intelligent AI assistant powered by ElevenLabs.",
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val (verified, msg) = ElevenLabsClient.testConnection(apiKey)
+        if (!verified) {
+            withContext(Dispatchers.Main) { onResult(false, msg) }
+            return
+        }
+
+        try {
+            val response = ElevenLabsClient.streamTextToSpeech(
+                apiKey = apiKey,
+                voiceId = voiceId,
+                text = sampleText
+            )
+            if (response.isSuccessful && response.body() != null) {
+                audioManager.playAudioStream(response.body()!!)
+                withContext(Dispatchers.Main) {
+                    onResult(true, "ElevenLabs verified! Playing high-quality audio stream.")
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    onResult(false, "API key verified, but TTS stream returned HTTP ${response.code()}")
+                }
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                onResult(false, "Failed to stream audio: ${e.localizedMessage}")
+            }
+        }
     }
 
     suspend fun generateAssistantReply(

@@ -39,6 +39,9 @@ fun VoiceScreen(
     val settings by viewModel.userSettings.collectAsState()
     val statusMsg by viewModel.systemStatusMessage.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
+    val detectedWord by viewModel.speechDetectedWord.collectAsState()
+    val rmsDb by viewModel.speechRmsDb.collectAsState()
+    val isSpeechListening by viewModel.isSpeechListening.collectAsState()
 
     val lastMayaMsg = chatMessages.lastOrNull { !it.isUser }?.text
         ?: "Ready to assist you, ${settings.userName}. Say anything or test commands."
@@ -163,18 +166,19 @@ fun VoiceScreen(
                 val count = 28
                 val spacing = size.width / (count + 1)
                 val isActive = orbState == MayaOrbState.LISTENING || orbState == MayaOrbState.SPEAKING
+                val voiceAmplitudeBoost = (rmsDb * 3.2f).coerceIn(0f, 30f)
 
                 for (i in 0 until count) {
                     val x = spacing * (i + 1)
                     val factor = if (isActive) {
-                        (sin(wavePhase + i * 0.35) * 45f + 12f).toFloat().coerceIn(6f, 50f)
+                        (sin(wavePhase + i * 0.35) * (32f + voiceAmplitudeBoost) + 12f).toFloat().coerceIn(6f, 60f)
                     } else {
                         (sin(wavePhase * 0.3f + i * 0.2) * 8f + 10f).toFloat().coerceIn(4f, 15f)
                     }
 
                     drawLine(
                         brush = Brush.verticalGradient(
-                            colors = listOf(CyberCyan, CyberViolet)
+                            colors = if (isSpeechListening) listOf(CyberEmerald, CyberCyan) else listOf(CyberCyan, CyberViolet)
                         ),
                         start = Offset(x, midY - factor),
                         end = Offset(x, midY + factor),
@@ -184,7 +188,33 @@ fun VoiceScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Single Word Voice Detection Banner
+        if (!detectedWord.isNullOrBlank()) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = CyberEmerald.copy(alpha = 0.2f),
+                border = BorderStroke(1.dp, CyberEmerald),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("single_word_detected_badge")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(CyberEmerald))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Voice Word Detected: \"$detectedWord\"",
+                        color = CyberEmerald,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Transcription / Status Card
         Surface(
@@ -199,18 +229,38 @@ fun VoiceScreen(
                 modifier = Modifier.padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = when (orbState) {
-                        MayaOrbState.LISTENING -> "Listening to your voice..."
-                        MayaOrbState.THINKING -> "Synthesizing contextual reasoning..."
-                        MayaOrbState.SPEAKING -> "Maya is speaking..."
-                        MayaOrbState.ASLEEP -> "Maya is asleep. Tap microphone or say \"Hey Maya\"."
-                        MayaOrbState.READY -> "Ready for next voice instruction."
-                    },
-                    color = CyberCyan,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = when (orbState) {
+                            MayaOrbState.LISTENING -> if (isSpeechListening) "Listening for single words..." else "Listening to your voice..."
+                            MayaOrbState.THINKING -> "Synthesizing contextual reasoning..."
+                            MayaOrbState.SPEAKING -> if (settings.elevenLabsApiKey.isNotBlank()) "ElevenLabs voice streaming..." else "Maya is speaking..."
+                            MayaOrbState.ASLEEP -> "Maya is asleep. Tap microphone or say \"Hey Maya\"."
+                            MayaOrbState.READY -> "Ready for next voice instruction."
+                        },
+                        color = if (isSpeechListening) CyberEmerald else CyberCyan,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (settings.elevenLabsApiKey.isNotBlank()) CyberViolet.copy(alpha = 0.2f) else CyberSurfaceVariant,
+                        border = BorderStroke(0.8.dp, if (settings.elevenLabsApiKey.isNotBlank()) CyberViolet else CyberSurfaceBorder)
+                    ) {
+                        Text(
+                            text = if (settings.elevenLabsApiKey.isNotBlank()) "ElevenLabs TTS" else "Android TTS",
+                            color = if (settings.elevenLabsApiKey.isNotBlank()) CyberViolet else TextMuted,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "\"$lastMayaMsg\"",
